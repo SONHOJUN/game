@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>내 사진 퍼즐</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Gowun+Dodum&display=swap">
+<style>
+/* Layout: single centered column on phone, board first, controls below as thumb-reach strip */
+:root{
+  --bg:#e9edef; --surface:#ffffff; --fg:#182126; --muted:#5d6b73; --line:#cfd8dc; --accent:#e4572e; --accent-fg:#ffffff; --ok:#1f9d6b;
+  --display:'Black Han Sans','Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+  --body:'Gowun Dodum','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12171a;--surface:#1b2328;--fg:#e8eef1;--muted:#93a3ab;--line:#2d3a41;--accent:#ff7448;--accent-fg:#1a0e08;--ok:#4cd39b;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#12171a;--surface:#1b2328;--fg:#e8eef1;--muted:#93a3ab;--line:#2d3a41;--accent:#ff7448;--accent-fg:#1a0e08;--ok:#4cd39b;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;padding-inline:16px;padding-block:20px 28px}
+*{box-sizing:border-box}
+.app{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+h1{font-family:var(--display);font-weight:400;font-size:28px;margin:0;letter-spacing:.01em}
+.stats{display:flex;gap:16px;font-variant-numeric:tabular-nums;color:var(--muted);font-size:15px}
+.stats b{color:var(--fg);font-weight:400}
+.stage{position:relative;width:100%}
+.board{position:relative;width:100%;aspect-ratio:var(--ar,1);background:var(--surface);border-radius:6px;overflow:hidden;touch-action:manipulation;user-select:none;-webkit-user-select:none;border:1px solid var(--line)}
+.tile{position:absolute;background-repeat:no-repeat;cursor:pointer;transition:left .22s ease,top .22s ease,transform .15s ease,opacity .15s;box-shadow:inset 0 0 0 1px rgba(0,0,0,.28);padding:0;border:0}
+.tile:focus-visible{outline:3px solid var(--accent);outline-offset:-3px;z-index:3}
+.tile.sel{z-index:2;transform:scale(.92);box-shadow:inset 0 0 0 3px var(--accent),0 6px 18px rgba(0,0,0,.35)}
+.tile.ok{box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+.board.solved .tile{box-shadow:none;cursor:default}
+.peek{position:absolute;inset:0;border-radius:6px;background-size:cover;background-position:center;opacity:0;pointer-events:none;transition:opacity .15s;z-index:5}
+.peek.on{opacity:1}
+.win{position:absolute;left:12px;right:12px;bottom:12px;z-index:6;background:var(--surface);color:var(--fg);border-radius:8px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.win strong{font-family:var(--display);font-weight:400;font-size:20px;color:var(--ok)}
+.win span{color:var(--muted);font-size:14px;font-variant-numeric:tabular-nums}
+.controls{display:flex;flex-direction:column;gap:12px}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+button,.btn{font:inherit;font-size:16px;min-height:48px;padding:0 18px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:1 1 auto}
+button:focus-visible,.btn:focus-within,.btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:700}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface);flex:1 1 100%}
+.seg button{border:0;border-radius:0;flex:1;background:transparent;min-height:44px;color:var(--muted)}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
+.label{font-size:13px;letter-spacing:.06em;color:var(--muted)}
+input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.hint{font-size:14px;color:var(--muted);margin:0}
+@media (prefers-reduced-motion:reduce){.tile{transition:none}}
+</style><style>:root{color-scheme:light dark}html,body{margin:0}body{min-height:100%}</style>
+</head>
+<body>
+
+
+<div class="app">
+  <header>
+    <h1>내 사진 퍼즐</h1>
+    <div class="stats"><span>이동 <b id="moves">0</b></span><span>시간 <b id="time">0:00</b></span></div>
+  </header>
+
+  <div class="stage">
+    <div class="board" id="board" role="group" aria-label="퍼즐 판"></div>
+    <div class="peek" id="peek"></div>
+  </div>
+
+  <div class="controls">
+    <div class="row">
+      <label class="btn primary" for="file">
+        사진 고르기
+        <input type="file" id="file" accept="image/*">
+      </label>
+      <button id="shuffle" type="button">다시 섞기</button>
+      <button id="peekBtn" type="button">원본 보기</button>
+    </div>
+    <div>
+      <div class="label" style="margin-bottom:6px">난이도</div>
+      <div class="seg" id="seg" role="group" aria-label="난이도">
+        <button type="button" data-n="3" aria-pressed="false">3 × 3</button>
+        <button type="button" data-n="4" aria-pressed="true">4 × 4</button>
+        <button type="button" data-n="5" aria-pressed="false">5 × 5</button>
+        <button type="button" data-n="6" aria-pressed="false">6 × 6</button>
+      </div>
+    </div>
+    <p class="hint" id="hint">조각 두 개를 차례로 눌러 자리를 바꿉니다. 지금은 예시 그림입니다. 사진 고르기로 내 사진을 불러오세요.</p>
+  </div>
+</div>
+
+<script>
+(function(){
+  var board=document.getElementById('board'), peek=document.getElementById('peek');
+  var movesEl=document.getElementById('moves'), timeEl=document.getElementById('time');
+  var hint=document.getElementById('hint');
+  var n=4, order=[], tiles=[], sel=-1, moves=0, started=false, t0=0, timer=null, solved=false;
+  var imgURL='', ratio=1;
+
+  try{var sn=parseInt(localStorage.getItem('puzzle-n'),10); if(sn>=3&&sn<=6)n=sn;}catch(e){}
+
+  function sampleImage(){
+    var c=document.createElement('canvas'); c.width=900; c.height=900; var g=c.getContext('2d');
+    var sky=g.createLinearGradient(0,0,0,900);
+    sky.addColorStop(0,'#1d3a6b'); sky.addColorStop(.45,'#e4572e'); sky.addColorStop(.62,'#ffc371');
+    g.fillStyle=sky; g.fillRect(0,0,900,900);
+    g.fillStyle='#fff3c4'; g.beginPath(); g.arc(620,430,95,0,7); g.fill();
+    g.fillStyle='rgba(255,255,255,.55)';
+    [[120,150,110],[300,230,80],[720,160,90],[820,260,60]].forEach(function(s){g.beginPath();g.ellipse(s[0],s[1],s[2],s[2]*.28,0,0,7);g.fill();});
+    function ridge(y,amp,col,seed){g.fillStyle=col;g.beginPath();g.moveTo(0,900);
+      for(var x=0;x<=900;x+=10){g.lineTo(x,y+Math.sin(x*.011+seed)*amp+Math.sin(x*.031+seed*2)*amp*.45);}
+      g.lineTo(900,900);g.closePath();g.fill();}
+    ridge(520,50,'#7b3b4a',1); ridge(600,45,'#4a2a47',3); ridge(700,35,'#241f3d',5);
+    g.fillStyle='#120f26'; g.fillRect(0,820,900,80);
+    g.fillStyle='#fff'; g.font='bold 64px sans-serif'; g.textAlign='center';
+    g.fillText('PUZZLE', 450, 120);
+    return c.toDataURL('image/jpeg',.9);
+  }
+
+  function setImage(url,w,h){
+    imgURL=url; ratio=Math.min(1.6,Math.max(0.62,w/h));
+    board.style.setProperty('--ar',ratio);
+    peek.style.backgroundImage='url('+url+')';
+    peek.style.aspectRatio=ratio; peek.style.height='auto';
+    build(); shuffle();
+  }
+
+  function build(){
+    board.innerHTML=''; tiles=[]; board.classList.remove('solved');
+    var w=100/n;
+    for(var i=0;i<n*n;i++){
+      var b=document.createElement('button'); b.type='button'; b.className='tile';
+      b.style.width=w+'%'; b.style.height=w+'%';
+      b.style.backgroundImage='url('+imgURL+')';
+      b.style.backgroundSize=(n*100)+'% '+(n*100)+'%';
+      var cx=i%n, cy=Math.floor(i/n);
+      b.style.backgroundPosition=(n>1?cx/(n-1)*100:0)+'% '+(n>1?cy/(n-1)*100:0)+'%';
+      b.setAttribute('aria-label','조각 '+(i+1));
+      (function(id){b.addEventListener('click',function(){tap(id);});})(i);
+      board.appendChild(b); tiles.push(b);
+    }
+  }
+
+  function place(){
+    var w=100/n;
+    for(var p=0;p<order.length;p++){
+      var t=tiles[order[p]];
+      t.style.left=(p%n)*w+'%'; t.style.top=Math.floor(p/n)*w+'%';
+      t.classList.toggle('ok',order[p]===p);
+    }
+  }
+
+  function shuffle(){
+    var N=n*n; order=[]; for(var i=0;i<N;i++)order.push(i);
+    do{ for(var j=N-1;j>0;j--){var k=Math.floor(Math.random()*(j+1));var x=order[j];order[j]=order[k];order[k]=x;} }
+    while(order.every(function(v,i){return v===i;}));
+    sel=-1; moves=0; started=false; solved=false; clearInterval(timer);
+    movesEl.textContent='0'; timeEl.textContent='0:00';
+    var old=document.querySelector('.win'); if(old)old.remove();
+    board.classList.remove('solved');
+    tiles.forEach(function(t){t.classList.remove('sel');t.disabled=false;});
+    place();
+  }
+
+  function fmt(s){return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
+
+  function tap(id){
+    if(solved)return;
+    var pos=order.indexOf(id);
+    if(sel===-1){ sel=pos; tiles[order[pos]].classList.add('sel'); return; }
+    if(sel===pos){ tiles[order[pos]].classList.remove('sel'); sel=-1; return; }
+    tiles[order[sel]].classList.remove('sel');
+    var a=order[sel]; order[sel]=order[pos]; order[pos]=a; sel=-1;
+    if(!started){started=true;t0=Date.now();timer=setInterval(function(){timeEl.textContent=fmt(Math.floor((Date.now()-t0)/1000));},500);}
+    moves++; movesEl.textContent=moves; place();
+    if(order.every(function(v,i){return v===i;}))win();
+  }
+
+  function win(){
+    solved=true; clearInterval(timer);
+    var s=Math.floor((Date.now()-t0)/1000); timeEl.textContent=fmt(s);
+    board.classList.add('solved'); tiles.forEach(function(t){t.disabled=true;});
+    var d=document.createElement('div'); d.className='win';
+    d.innerHTML='<strong>완성!</strong><span>'+moves+'번 이동 · '+fmt(s)+'</span>';
+    document.querySelector('.stage').appendChild(d);
+  }
+
+  document.getElementById('shuffle').addEventListener('click',shuffle);
+
+  var pb=document.getElementById('peekBtn');
+  function pk(on){peek.classList.toggle('on',on);}
+  pb.addEventListener('pointerdown',function(){pk(true);});
+  ['pointerup','pointerleave','pointercancel'].forEach(function(e){pb.addEventListener(e,function(){pk(false);});});
+  pb.addEventListener('keydown',function(e){if(e.key===' '||e.key==='Enter')pk(true);});
+  pb.addEventListener('keyup',function(){pk(false);});
+  pb.addEventListener('contextmenu',function(e){e.preventDefault();});
+  pb.textContent='누르고 있으면 원본';
+
+  var seg=document.getElementById('seg');
+  function syncSeg(){seg.querySelectorAll('button').forEach(function(b){b.setAttribute('aria-pressed',String(parseInt(b.dataset.n,10)===n));});}
+  seg.addEventListener('click',function(e){
+    var b=e.target.closest('button'); if(!b)return;
+    n=parseInt(b.dataset.n,10); try{localStorage.setItem('puzzle-n',n);}catch(x){}
+    syncSeg(); build(); shuffle();
+  });
+  syncSeg();
+
+  document.getElementById('file').addEventListener('change',function(e){
+    var f=e.target.files&&e.target.files[0]; if(!f)return;
+    var url=URL.createObjectURL(f), im=new Image();
+    im.onload=function(){
+      var max=1200, s=Math.min(1,max/Math.max(im.naturalWidth,im.naturalHeight));
+      var w=Math.round(im.naturalWidth*s), h=Math.round(im.naturalHeight*s);
+      var r=Math.min(1.6,Math.max(0.62,w/h)), cw=w, ch=h;
+      if(w/h>r)cw=Math.round(h*r); else if(w/h<r)ch=Math.round(w/r);
+      var c=document.createElement('canvas'); c.width=cw; c.height=ch;
+      c.getContext('2d').drawImage(im,(w-cw)/2/s,(h-ch)/2/s,cw/s,ch/s,0,0,cw,ch);
+      URL.revokeObjectURL(url);
+      setImage(c.toDataURL('image/jpeg',.88),cw,ch);
+      hint.textContent='내 사진으로 새 퍼즐을 만들었습니다. 조각 두 개를 차례로 눌러 자리를 바꾸세요.';
+    };
+    im.onerror=function(){hint.textContent='이 파일은 열 수 없습니다. JPG나 PNG 사진을 골라 주세요.';};
+    im.src=url; e.target.value='';
+  });
+
+  setImage(sampleImage(),900,900);
+})();
+</script>
+
+</body>
+</html>
